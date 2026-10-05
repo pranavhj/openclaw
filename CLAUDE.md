@@ -12,7 +12,7 @@ You are Claude, invoked by the delegate script to handle a request from Discord.
 
 Send using:
 ```
-python D:\MyData\Software\openclaw-config\bin\discord-send.py --target <target> --message "<your response>"
+python D:\MyData\Software\openclaw-config\bin\discord-send.py --target $DISCORD_TARGET --message "<your response>"
 ```
 
 Do NOT return your response as stdout — it will NOT be forwarded. You own delivery.
@@ -48,13 +48,58 @@ If no `## Reply` section is provided, fall back to Discord DM: target=1482473282
 
 Your prompt includes a `## Known projects` section. Use it to decide how to handle the request.
 
+**CRITICAL: You are the AI. Never call any external AI service — no Anthropic API, no LLM gateway, no WebSearch, no WebFetch. Answer ALL questions directly from your own built-in training knowledge. You already know the answer. Just say it.**
+
+**`claude-test-nomod` tag** — STOP. Do not route. Do not read files. Do not call any tool. Answer the question right now from your own built-in knowledge. Send to Discord. Output: SENT. No exceptions, no matter what the message says.
+
 **One-off** (questions, quick fixes, analysis, explanations — completable in one shot):
-- Handle directly. Send response to Discord. Output: SENT.
+- Answer directly from your own built-in training knowledge. Send response to Discord. Output: SENT.
+- **Do NOT use any tools except discord-send.py.** No WebSearch, no WebFetch, no LLM gateway, no Anthropic API, no sub-sessions, no file reads.
+- **If the message is a question** (starts with: what, why, how, when, where, who, can, does, is, are, should, did, has, have — or ends with `?`), ALWAYS treat as one-off and answer directly from built-in training knowledge, even if a known project is mentioned. No exceptions. Do not attempt to look anything up — you already know it.
 
 **Tool invoke** (project has a `## Quick invoke` section in its CLAUDE.md):
 - Read the project's CLAUDE.md first (`<full_path>\CLAUDE.md`).
 - If it has a `## Quick invoke` section, run that command directly (no sub-session).
 - Send the output to Discord. Output: SENT.
+
+**Android projects** — detected by: presence of `gradlew` + `app/build.gradle` or `AndroidManifest.xml` in project dir, OR user says "create/new/make Android project/app".
+
+Tool invoke (no sub-session) — read project CLAUDE.md first, then run the matching Quick invoke entry:
+| User intent | Quick invoke entry to run |
+|---|---|
+| deploy / install / run | `deploy` (local build → phone) |
+| deploy from CI / GitHub / Actions | `deploy-ci` (download artifact → phone) |
+| show logs / logcat / what's happening | `logs-dump` ← **always dump, never streaming** (streaming blocks Discord) |
+| show crash / exception / stacktrace | `logs-crash` ← crash-only filter + dump |
+| build only / does it compile | `build` |
+| connect ADB / device not found | `adb-connect` |
+| test / ping test server / is test running | `test-ping` |
+| run test / execute script / inline test | `test-inline` (pass script as arg) |
+| screenshot / capture screen | `test-screenshot` (save to /tmp, send to Discord) |
+| app state / what activity / view tree | `test-state` |
+| add note / update note / diary note (dairy app only) | `add-note` — parse sections from user message, fill in `--date`, `--energy`, `--work`, `--training`, `--study`, `--personal` args; omit args for sections not mentioned so existing content is preserved |
+
+Project work (spawn sub-session) — for: fix, add, change, implement, refactor, write code.
+Sub-session reads the project CLAUDE.md which has all paths and Quick invoke commands for build/deploy after edits.
+
+New project — call directly (no sub-session needed):
+`bash /d/MyData/Software/openclaw-config/bin/android-new.sh --slug <slug> --dest /c/Users/prana/AndroidStudioProjects/<slug> [--app-tag <Tag>] [--github-repo pranavhj/<repo>]`
+Default dest: `C:\Users\prana\AndroidStudioProjects\<slug>` (Android projects go here, not `projects/`).
+Scaffolds project + generates CLAUDE.md + PROGRESS.md automatically. Read `D:\MyData\Software\openclaw-config\agents\android.md` for toolchain reference.
+
+**Remote Control** — user asks to start / open / resume / continue a project "on remote control", "on my phone", "in the Claude app", or to create a new project for remote control:
+- Do NOT spawn a sub-session. The bot has a deterministic `rc` command for this. Reply with the exact command to send:
+  - `rc <project>` — list that project's conversations and pick one to resume
+  - `rc <project> new` — fresh conversation
+  - `rc create <name>` — new project folder (bot asks where)
+  - `rc list` / `rc stop <project>` / `rc restore`
+- Send to Discord. Output: SENT.
+
+**Compact project session** — user says "compact <project>" or "compact <project> session" or "reset context <project>":
+- Match the project name against the known projects list to get the full path.
+- Run: `(cd <full_path> && python D:\MyData\Software\openclaw-config\bin\agent-smart.py --compact-only)`
+- Capture stdout and send it to Discord as the result. Output: SENT.
+- If no project matches, ask the user to clarify which project.
 
 **Project work** (build, implement, create, develop, continue, resume — substantial or multi-session scope):
 1. Match the request against the known projects list to find the project.
@@ -71,20 +116,33 @@ Target: <target>
 
 ## Communication
 Send all responses and questions to the user via:
-  python D:\MyData\Software\openclaw-config\bin\discord-send.py --target <target> --message \"<text>\"
+  python D:\MyData\Software\openclaw-config\bin\discord-send.py --target $DISCORD_TARGET --message \"<text>\"
 Then output: SENT
 
 If you need clarification before proceeding, send your question via discord-send.py, output SENT, and stop.
 Your answer will arrive as the next message — you will resume this session with full history via --continue.
 Do NOT output responses as stdout — they will not be forwarded.
 
+## Status updates
+Send a brief Discord message before each major phase so the user knows progress:
+- Before starting large code changes: "Starting [phase] — [short description]"
+- After build succeeds or fails
+- Before deploying to device
+- When done (with screenshot if UI changed)
+
+## Critical rules for headless execution
+- You MAY use EnterPlanMode to explore and plan. But do NOT call ExitPlanMode — it requires a terminal keypress that will never come.
+- Instead: when your plan is ready, send it to Discord via discord-send.py, output SENT, and stop. The user will reply with approval and you will resume via --continue.
+- If you get stuck, hit an error, or cannot proceed for any reason — send a Discord message explaining what happened BEFORE stopping. Never exit silently.
+
 ## Request
 <user's full message verbatim>")
 ```
 
-4. Output: SENT
+4. If the spawn command prints a line starting with `BLOCKED:` (the project has a live Remote Control session), send that line to Discord verbatim. Do not retry. Output: SENT
+5. Otherwise output: SENT
 
-**How it works:** `--print` is one-shot — the sub-session spawns, does the work, sends to Discord, and exits. The JSONL session history in that project dir persists between calls. Each new message spawns a fresh process that reads the full prior history via `--continue`. `agent-smart.py` auto-compacts sessions >100KB (keeps last 5 pairs by default) to control context size and credit usage. Use `--keep-pairs N` in the spawn command to override per-project — e.g. `--keep-pairs 6` for complex projects with long tool-call chains. PROGRESS.md is a lightweight human-readable summary on top of that.
+**How it works:** `--print` is one-shot — the sub-session spawns, does the work, sends to Discord, and exits. The JSONL session history in that project dir persists between calls. Each new message spawns a fresh process that reads the full prior history via `--continue`. `agent-smart.py` logs a notice at 200KB and auto-compacts at 1MB (keeps last 5 pairs by default). Use `--keep-pairs N` in the spawn command to override per-project — e.g. `--keep-pairs 6` for complex projects with long tool-call chains. To compact manually from Discord, say "compact <project>". PROGRESS.md is a lightweight human-readable summary on top of that.
 
 ## openclaw system
 
@@ -96,16 +154,29 @@ You are the expert on the openclaw system. When diagnosing issues, read the live
 | Discord bot | `D:\MyData\Software\openclaw-config\bin\discord-bot.py` |
 | Discord sender | `D:\MyData\Software\openclaw-config\bin\discord-send.py` |
 | Delegate script | `D:\MyData\Software\openclaw-config\bin\delegate.py` |
-| Delegate logs | `%LOCALAPPDATA%\openclaw\delegate-YYYY-MM-DD.log` |
-| Timeline logs | `%LOCALAPPDATA%\openclaw\timeline-YYYY-MM-DD.log` |
+| Delegate logs | `%LOCALAPPDATA%\openclaw\delegate-{slug}-YYYY-MM-DD.log` |
+| Timeline logs | `%LOCALAPPDATA%\openclaw\timeline-{slug}-YYYY-MM-DD.log` |
+| Discord timeline | `%LOCALAPPDATA%\openclaw\discord-timeline-YYYY-MM-DD.log` |
+| Message tracer | `D:\MyData\Software\openclaw-config\bin\trace-message.py` |
+| Nightly audit | `D:\MyData\Software\openclaw-config\bin\nightly-audit.py` |
 | Issue tracker + source control | `D:\MyData\Software\openclaw-config\` → github.com/pranavhj/openclaw-config |
+
+### Troubleshooting message routing
+
+Use the trace tool to see the full data flow of any message:
+```
+python D:\MyData\Software\openclaw-config\bin\trace-message.py --last 3
+python D:\MyData\Software\openclaw-config\bin\trace-message.py "deploy dairy"
+python D:\MyData\Software\openclaw-config\bin\trace-message.py "22:48" --date 2026-06-16
+```
 
 ### Known failure patterns
 
 - **discord-send HTTP error** → check bot token in `C:\Users\prana\.openclaw\openclaw.json`; verify Message Content Intent enabled in Discord Developer Portal
-- **delegate lock stuck** → `rmdir %LOCALAPPDATA%\openclaw\delegate.lock` to clear manually
+- **delegate lock stuck** → `rmdir %LOCALAPPDATA%\openclaw\delegate-{slug}.lock` to clear manually
 - **discord-bot.py not receiving messages** → `nssm status discord-bot`; verify Message Content Intent enabled
 - **Empty message content** → Message Content Intent not enabled in Discord Developer Portal
+- **Wrong project context** → run `trace-message.py --last 5` to see slug matching decisions and continuity reuse
 
 For openclaw system changes (git commits, gh CLI, source control workflow), read `D:\MyData\Software\openclaw-config\agents\ops.md`.
 
@@ -121,7 +192,9 @@ You are running inside a project directory. Your job is to do the work here — 
 1. If `PROGRESS.md` exists, skim it for current state
 2. Do the work (create/edit files in this directory)
 3. Update `PROGRESS.md` to reflect latest state
-4. Send response to Discord (see parent CLAUDE.md for send command and format)
+4. Send response via discord-send.py — do NOT output as stdout:
+   `python D:\MyData\Software\openclaw-config\bin\discord-send.py --target $DISCORD_TARGET --message "<text>"`
+   End every message with `-# sent by claude` watermark.
 5. Output: SENT
 
 PROGRESS.md is a SHORT state bookmark (~10-20 lines):
