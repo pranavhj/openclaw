@@ -1,0 +1,2 @@
+# Hook state (local, per-session)
+.claude/state/
