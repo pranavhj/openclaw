@@ -12,7 +12,7 @@ You are Claude, invoked by the delegate script to handle a request from Discord.
 
 Send using:
 ```
-python D:\MyData\Software\openclaw-config\bin\discord-send.py --target $DISCORD_TARGET --message "<your response>"
+python /d/MyData/Software/openclaw-config/bin/discord-send.py --target $DISCORD_TARGET --message "<your response>"
 ```
 
 Do NOT return your response as stdout — it will NOT be forwarded. You own delivery.
@@ -113,7 +113,7 @@ Target: <target>
 
 ## Communication
 Send all responses and questions to the user via:
-  python D:\MyData\Software\openclaw-config\bin\discord-send.py --target $DISCORD_TARGET --message \"<text>\"
+  python /d/MyData/Software/openclaw-config/bin/discord-send.py --target $DISCORD_TARGET --message \"<text>\"
 Then output: SENT
 
 If you need clarification before proceeding, send your question via discord-send.py, output SENT, and stop.
@@ -190,7 +190,7 @@ You are running inside a project directory. Your job is to do the work here — 
 2. Do the work (create/edit files in this directory)
 3. Update `PROGRESS.md` to reflect latest state
 4. Send response via discord-send.py — do NOT output as stdout:
-   `python D:\MyData\Software\openclaw-config\bin\discord-send.py --target $DISCORD_TARGET --message "<text>"`
+   `python /d/MyData/Software/openclaw-config/bin/discord-send.py --target $DISCORD_TARGET --message "<text>"`
    End every message with `-# sent by claude` watermark.
 5. Output: SENT
 
